@@ -1,0 +1,12 @@
+[Unit]
+Description=Pi Router
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/pi-router up
+
+[Install]
+WantedBy=multi-user.target
