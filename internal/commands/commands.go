@@ -22,10 +22,14 @@ func (a App) InitConfig() error {
 }
 
 func (a App) Uninstall() error {
+	_ = system.Run("systemctl", "stop", "pi-router.service")
+	_ = system.Run("systemctl", "disable", "pi-router.service")
+
 	_ = system.Run("systemctl", "stop", "hostapd")
 	_ = system.Run("systemctl", "stop", "dnsmasq")
 
 	files := []string{
+		"/etc/systemd/system/pi-router.service",
 		"/etc/dnsmasq.d/pi-router.conf",
 		"/etc/hostapd/hostapd.conf",
 		"/etc/sysctl.d/90-pi-router.conf",
@@ -34,6 +38,8 @@ func (a App) Uninstall() error {
 	for _, f := range files {
 		_ = os.Remove(f)
 	}
+
+	_ = system.Run("systemctl", "daemon-reload")
 
 	fmt.Println("Uninstalled pi-router generated files.")
 	fmt.Println("Config preserved at:", a.ConfigPath)
@@ -187,6 +193,41 @@ bogus-priv
 		return err
 	}
 
+	bootMode := cfg.BootMode
+
+	if bootMode == "" {
+		bootMode = "up"
+	}
+
+	if bootMode != "up" && bootMode != "tunnel" {
+		return fmt.Errorf(
+			"invalid BOOT_MODE %q: use up or tunnel",
+			bootMode,
+		)
+	}
+
+	unit := fmt.Sprintf(`[Unit]
+Description=Pi Travel Router
+After=network-online.target tailscaled.service
+Wants=network-online.target tailscaled.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/pi-router %s
+
+[Install]
+WantedBy=multi-user.target
+`, bootMode)
+
+	if err := os.WriteFile(
+		"/etc/systemd/system/pi-router.service",
+		[]byte(unit),
+		0644,
+	); err != nil {
+		return err
+	}
+
 	info := distro.Detect()
 
 	sm := services.Manager{Kind: info.ServiceMgr}
@@ -194,7 +235,12 @@ bogus-priv
 	_ = sm.Enable("nftables")
 	_ = sm.Enable("fail2ban")
 
-	fmt.Println("Installed configs. Reboot recommended.")
+	_ = system.Run("systemctl", "daemon-reload")
+	_ = system.Run("systemctl", "enable", "tailscaled")
+	_ = system.Run("systemctl", "enable", "pi-router.service")
+
+	fmt.Println("Installed configs and enabled boot service.")
+	fmt.Println("Reboot recommended.")
 
 	return nil
 }
