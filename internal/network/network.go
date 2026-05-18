@@ -11,7 +11,7 @@ import (
 
 func Uplink(cfg config.Config) string {
 	if cfg.UplinkIF != "" {
-		if system.Exists("ip") {
+		if system.CommandExists("ip") {
 			if _, err := system.Output("ip", "link", "show", cfg.UplinkIF); err == nil {
 				return cfg.UplinkIF
 			}

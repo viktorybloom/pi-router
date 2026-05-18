@@ -46,7 +46,7 @@ func Detect() Info {
 
 func detectPkgMgr() string {
 	for _, pm := range []string{"apt", "pacman", "dnf", "apk", "zypper", "xbps-install"} {
-		if system.Exists(pm) {
+		if system.CommandExists(pm) {
 			return pm
 		}
 	}
@@ -54,13 +54,13 @@ func detectPkgMgr() string {
 }
 
 func detectServiceMgr() string {
-	if system.Exists("systemctl") {
+	if system.CommandExists("systemctl") {
 		return "systemd"
 	}
-	if system.Exists("rc-service") {
+	if system.CommandExists("rc-service") {
 		return "openrc"
 	}
-	if system.Exists("service") {
+	if system.CommandExists("service") {
 		return "service"
 	}
 	return ""
