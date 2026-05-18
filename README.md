@@ -143,7 +143,5 @@ pi-router tunnel            tailscale-exit + route-tailscale
 pi-router status            show interfaces, routes, firewall, tailscale
 ```
 
-## Notes
 
-This is a host-level networking tool. Do not run the router core in Docker. It needs to control interfaces, services, routing, and firewall state.
 

@@ -1,13 +1,34 @@
-BINARY=pi-router
-PREFIX=/usr/local
+BINARY := pi-router
+CMD := ./cmd/pi-router
+BUILD_DIR := build
 
-.PHONY: build install clean
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
+LDFLAGS := -ldflags "-X main.version=$(VERSION)"
+
+.PHONY: build
 build:
-	go build -o $(BINARY) ./cmd/pi-router
+	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY) $(CMD)
 
-install: build
-	install -m 755 $(BINARY) $(PREFIX)/bin/$(BINARY)
+.PHONY: pi
+pi:
+	GOOS=linux GOARCH=arm64 \
+	go build $(LDFLAGS) \
+	-o $(BUILD_DIR)/$(BINARY)-arm64 \
+	$(CMD)
 
+.PHONY: run
+run:
+	go run $(CMD)
+
+.PHONY: fmt
+fmt:
+	go fmt ./...
+
+.PHONY: tidy
+tidy:
+	go mod tidy
+
+.PHONY: clean
 clean:
-	rm -f $(BINARY)
+	rm -rf $(BUILD_DIR)
