@@ -16,7 +16,6 @@ type Set struct {
 	WirelessTools string
 	Unattended    string
 	Fail2ban      string
-	Tailscale     string
 }
 
 var packageMap = map[string]Set{
@@ -30,7 +29,6 @@ var packageMap = map[string]Set{
 		WirelessTools: "wireless-tools",
 		Unattended:    "unattended-upgrades",
 		Fail2ban:      "fail2ban",
-		Tailscale:     "",
 	},
 	"pacman": {
 		Hostapd:       "hostapd",
@@ -42,7 +40,6 @@ var packageMap = map[string]Set{
 		WirelessTools: "wireless_tools",
 		Unattended:    "",
 		Fail2ban:      "fail2ban",
-		Tailscale:     "tailscale",
 	},
 	"dnf": {
 		Hostapd:       "hostapd",
@@ -54,7 +51,6 @@ var packageMap = map[string]Set{
 		WirelessTools: "wireless-tools",
 		Unattended:    "",
 		Fail2ban:      "fail2ban",
-		Tailscale:     "tailscale",
 	},
 	"zypper": {
 		Hostapd:       "hostapd",
@@ -66,7 +62,6 @@ var packageMap = map[string]Set{
 		WirelessTools: "wireless-tools",
 		Unattended:    "",
 		Fail2ban:      "fail2ban",
-		Tailscale:     "tailscale",
 	},
 	"apk": {
 		Hostapd:       "hostapd",
@@ -78,7 +73,6 @@ var packageMap = map[string]Set{
 		WirelessTools: "wireless-tools",
 		Unattended:    "",
 		Fail2ban:      "fail2ban",
-		Tailscale:     "tailscale",
 	},
 }
 
@@ -100,11 +94,8 @@ func Bootstrap(pm string, installTailscale bool) error {
 		pkgs.Fail2ban,
 	}
 
-	if installTailscale && pkgs.Tailscale != "" {
-		list = append(list, pkgs.Tailscale)
-	}
-
 	filtered := []string{}
+
 	for _, p := range list {
 		if p != "" {
 			filtered = append(filtered, p)
@@ -116,41 +107,69 @@ func Bootstrap(pm string, installTailscale bool) error {
 		if err := system.Run("apt", "update"); err != nil {
 			return err
 		}
-		if err := system.Run("apt", append([]string{"install", "-y"}, filtered...)...); err != nil {
+
+		if err := system.Run(
+			"apt",
+			append([]string{"install", "-y"}, filtered...)...,
+		); err != nil {
 			return err
 		}
-		if installTailscale {
-			return InstallTailscaleApt()
-		}
-		return nil
 
 	case "pacman":
-		return system.Run("pacman", append([]string{"-Syu", "--needed", "--noconfirm"}, filtered...)...)
+		if err := system.Run(
+			"pacman",
+			append([]string{"-Syu", "--needed", "--noconfirm"}, filtered...)...,
+		); err != nil {
+			return err
+		}
 
 	case "dnf":
-		return system.Run("dnf", append([]string{"install", "-y"}, filtered...)...)
+		if err := system.Run(
+			"dnf",
+			append([]string{"install", "-y"}, filtered...)...,
+		); err != nil {
+			return err
+		}
 
 	case "zypper":
-		return system.Run("zypper", append([]string{"--non-interactive", "install"}, filtered...)...)
+		if err := system.Run(
+			"zypper",
+			append([]string{"--non-interactive", "install"}, filtered...)...,
+		); err != nil {
+			return err
+		}
 
 	case "apk":
 		if err := system.Run("apk", "update"); err != nil {
 			return err
 		}
-		return system.Run("apk", append([]string{"add"}, filtered...)...)
+
+		if err := system.Run(
+			"apk",
+			append([]string{"add"}, filtered...)...,
+		); err != nil {
+			return err
+		}
 
 	default:
 		return fmt.Errorf("no installer implementation for %s", pm)
 	}
+
+	if installTailscale {
+		return InstallTailscale()
+	}
+
+	return nil
 }
 
-func InstallTailscaleApt() error {
+func InstallTailscale() error {
 	if system.CommandExists("tailscale") {
 		return nil
 	}
 
-	// Safer long-term TODO:
-	// replace this with Tailscale's distro repo/key setup.
-	// This is pragmatic and matches Tailscale's official installer path.
-	return system.Run("sh", "-c", "curl -fsSL https://tailscale.com/install.sh | sh")
+	return system.Run(
+		"sh",
+		"-c",
+		"curl -fsSL https://tailscale.com/install.sh | sh",
+	)
 }

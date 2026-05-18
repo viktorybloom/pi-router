@@ -11,21 +11,21 @@ import (
 const DefaultConfigPath = "/usr/local/etc/pi-router.env"
 
 type Config struct {
-	APSSID              string
-	APPass              string
-	APChannel           string
-	APIP                string
-	APDHCPStart         string
-	APDHCPEnd           string
-	EthClientIP         string
-	EthClientDHCPStart  string
-	EthClientDHCPEnd    string
-	WifiCountry         string
-	InstallTailscale    bool
-	UplinkIF            string
-	HomeExitNode        string
-	AllowClientSSH      bool
-	FailClosed          bool
+	APSSID             string
+	APPass             string
+	APChannel          string
+	APIP               string
+	APDHCPStart        string
+	APDHCPEnd          string
+	EthClientIP        string
+	EthClientDHCPStart string
+	EthClientDHCPEnd   string
+	WifiCountry        string
+	InstallTailscale   bool
+	UplinkIF           string
+	HomeExitNode       string
+	AllowClientSSH     bool
+	FailClosed         bool
 }
 
 func Default() Config {
