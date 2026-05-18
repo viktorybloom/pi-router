@@ -1,11 +1,15 @@
 # pi-router
 
-A small Go CLI that turns a pi, into a portable travel router.
+A small CLI that turns a Pi or Linux device into a portable travel router.
 
-It is designed for this topology:
+Designed for:
 
+```text
 Internet uplink:
-  phone USB tether, Ethernet, USB Ethernet, hotel/cafe network
+  phone USB tether
+  Ethernet
+  USB Ethernet
+  hotel/cafe network
 
 Pi:
   WiFi AP for clients
@@ -16,112 +20,178 @@ Pi:
 Clients:
   connect by WiFi or Ethernet
   no Tailscale client required
+```
 
-Security model
+## Security model
 
-    No public inbound ports required.
-    SSH should be key-only.
-    SSH is allowed through Tailscale only by default firewall rules.
-    Tunnel mode is fail-closed: clients route through tailscale0 only.
-    WAN mode can be enabled explicitly for normal internet routing.
+- no public inbound ports required
+- SSH should be key-only
+- SSH allowed through Tailscale only by default firewall rules
+- tunnel mode is fail-closed:
+  clients route through `tailscale0` only
+- WAN mode can be enabled explicitly
 
-Supported Linux targets
+## Supported Linux targets
 
-    Raspberry Pi OS Lite
+- Raspberry Pi OS Lite
+- Debian
+- Ubuntu Server
+- Arch Linux ARM
+- Fedora
+- openSUSE
+- Alpine
 
-    Debian
+The CLI detects package managers, but the networking stack still uses native Linux services:
 
-    Ubuntu Server
+- `hostapd`
+- `dnsmasq`
+- `nftables`
+- `tailscale`
+- `dhcpcd`
+- `iw`
 
-    Arch Linux ARM
+---
 
-    Fedora
+# Build
 
-    openSUSE
-
-    Alpine
-
-The CLI detects package managers, but the actual networking stack still requires host services:
-
-    hostapd
-    dnsmasq
-    nftables
-    tailscale
-    dhcpcd
-    iw
-
-Build from source
-
+```bash
 git clone https://github.com/viktorybloom/pi-router.git
 cd pi-router
+
 go build -o pi-router ./cmd/pi-router
+
 sudo install -m 755 pi-router /usr/local/bin/pi-router
+```
 
-Config
+---
 
+# Configure
+
+```bash
 sudo mkdir -p /usr/local/etc
-sudo cp pi-router.env.example /usr/local/etc/pi-router.env
+
+sudo cp pi-router.env.example \
+  /usr/local/etc/pi-router.env
+
 sudo nano /usr/local/etc/pi-router.env
+```
 
 Set a long random WiFi password.
-Install on a fresh Pi
 
+---
+
+# Install on a fresh Pi
+
+```bash
 sudo pi-router doctor
 sudo pi-router bootstrap
 sudo pi-router install
+
 sudo reboot
+```
 
 After reboot:
 
+```bash
 sudo pi-router tailscale-up
 sudo pi-router up
+```
 
-Normal WAN routing
+---
 
+# Usage
+
+## Normal WAN routing
+
+```bash
 sudo pi-router up
+```
 
-This starts:
+Starts:
 
-    WiFi AP
-    Ethernet client LAN if eth0 is free
-    normal WAN routing through detected uplink
+- WiFi AP
+- Ethernet client LAN if `eth0` is free
+- normal WAN routing through detected uplink
 
-Tailscale tunnel routing
+---
 
-On your home node first:
+## Tailscale tunnel routing
 
+On your home node:
+
+```bash
 sudo tailscale up \
   --advertise-exit-node \
   --advertise-routes=192.168.1.0/24 \
   --ssh=false
+```
 
-Approve the exit node and subnet route in the Tailscale admin console.
+Approve:
+- exit node
+- subnet route
 
-On the travel Pi, set in /usr/local/etc/pi-router.env:
+inside the Tailscale admin console.
 
+On the travel Pi, set:
+
+```ini
 HOME_EXIT_NODE=your-home-node-name
+```
 
-Then run:
+Then:
 
+```bash
 sudo pi-router tailscale-exit
 sudo pi-router route-tailscale
+```
 
 Or:
 
+```bash
 sudo pi-router tunnel
+```
 
-Commands
+---
 
-pi-router doctor            check distro, package manager, and required tools
-pi-router bootstrap         install OS dependencies using detected package manager
-pi-router install           write hostapd/dnsmasq/sysctl configs
-pi-router up                start AP, optional eth LAN, and WAN routing
-pi-router wifi-ap           start WiFi AP only
-pi-router eth-lan           make eth0 a client LAN if not uplink
-pi-router route-wan         allow clients through detected WAN/uplink
-pi-router route-tailscale   fail-closed client routing via tailscale0 only
-pi-router tailscale-up      tailscale up --ssh=false
-pi-router tailscale-exit    use HOME_EXIT_NODE
-pi-router tunnel            tailscale-exit + route-tailscale
-pi-router status            show interfaces, routes, firewall, tailscale
+# Commands
 
+```text
+pi-router doctor
+pi-router bootstrap
+pi-router install
+
+pi-router up
+pi-router wifi-ap
+pi-router eth-lan
+
+pi-router route-wan
+pi-router route-tailscale
+
+pi-router tailscale-up
+pi-router tailscale-exit
+pi-router tunnel
+
+pi-router status
+```
+
+---
+
+# Uninstall
+
+Remove generated configs/services:
+
+```bash
+sudo pi-router uninstall
+```
+
+Remove config too:
+
+```bash
+sudo pi-router purge
+```
+
+Remove binary manually:
+
+```bash
+sudo rm -f /usr/local/bin/pi-router
+```
