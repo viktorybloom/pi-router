@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/viktor/pi-router/internal/system"
+	"github.com/viktorybloom/pi-router/internal/system"
 )
 
 type Info struct {

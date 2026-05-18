@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/viktor/pi-router/internal/config"
-	"github.com/viktor/pi-router/internal/system"
+	"github.com/viktorybloom/pi-router/internal/config"
+	"github.com/viktorybloom/pi-router/internal/system"
 )
 
 func Uplink(cfg config.Config) string {

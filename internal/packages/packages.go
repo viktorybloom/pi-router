@@ -3,7 +3,7 @@ package packages
 import (
 	"fmt"
 
-	"github.com/viktor/pi-router/internal/system"
+	"github.com/viktorybloom/pi-router/internal/system"
 )
 
 type Set struct{ Hostapd, Dnsmasq, Nftables, Curl, DHCPCD, IW, WirelessTools, Unattended, Fail2ban, Tailscale string }
