@@ -159,22 +159,25 @@ sudo pi-router tunnel
 # Commands
 
 ```text
-pi-router doctor
-pi-router bootstrap
-pi-router install
+pi-router doctor            check distro, package manager, and required tools
+pi-router bootstrap         install OS dependencies
+pi-router install           write hostapd/dnsmasq/sysctl configs
 
-pi-router up
-pi-router wifi-ap
-pi-router eth-lan
+pi-router up                start AP, optional eth LAN, and WAN routing
+pi-router wifi-ap           start WiFi AP only
+pi-router eth-lan           enable eth0 client LAN
 
-pi-router route-wan
-pi-router route-tailscale
+pi-router route-wan         allow client internet through detected uplink
+pi-router route-tailscale   fail-closed routing through tailscale0 only
 
-pi-router tailscale-up
-pi-router tailscale-exit
-pi-router tunnel
+pi-router tailscale-up      run tailscale up --ssh=false
+pi-router tailscale-exit    connect to HOME_EXIT_NODE
+pi-router tunnel            tailscale-exit + route-tailscale
 
-pi-router status
+pi-router status            show interfaces, routes, firewall, and tailscale state
+
+pi-router uninstall         remove generated configs/services
+pi-router purge             uninstall and remove runtime config
 ```
 
 ---
