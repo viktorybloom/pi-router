@@ -78,7 +78,7 @@ func Doctor() error {
 		"iw",
 		"ip",
 	} {
-		fmt.Printf("%-10s %v\n", bin, system.Exists(bin))
+		fmt.Printf("%-10s %v\n", bin, system.CommandExists(bin))
 	}
 
 	return nil
