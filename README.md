@@ -2,7 +2,7 @@
 
 A small CLI that turns a Pi or Linux device into a portable travel router.
 
-Designed for:
+It is designed for this topology:
 
 ```text
 Internet uplink:
@@ -29,7 +29,7 @@ Clients:
 - SSH allowed through Tailscale only by default firewall rules
 - tunnel mode is fail-closed:
   clients route through `tailscale0` only
-- WAN mode can be enabled explicitly
+- WAN mode can be enabled explicitly for normal internet routing
 
 ## Supported Linux targets
 
@@ -41,7 +41,7 @@ Clients:
 - openSUSE
 - Alpine
 
-The CLI detects package managers, but the networking stack still uses native Linux services:
+The CLI detects package managers, but the networking stack still requires host services:
 
 - `hostapd`
 - `dnsmasq`
@@ -52,7 +52,7 @@ The CLI detects package managers, but the networking stack still uses native Lin
 
 ---
 
-# Build
+# Build from source
 
 ```bash
 git clone https://github.com/viktorybloom/pi-router.git
@@ -65,7 +65,7 @@ sudo install -m 755 pi-router /usr/local/bin/pi-router
 
 ---
 
-# Configure
+# Config
 
 ```bash
 sudo mkdir -p /usr/local/etc
@@ -76,7 +76,18 @@ sudo cp pi-router.env.example \
 sudo nano /usr/local/etc/pi-router.env
 ```
 
-Set a long random WiFi password.
+Set:
+- a long random WiFi password
+- optional `HOME_EXIT_NODE`
+
+Example:
+
+```ini
+AP_SSID=pi_travel_router
+AP_PASS=CHANGE_ME_LONG_RANDOM_PASSWORD
+
+HOME_EXIT_NODE=your-home-node-name
+```
 
 ---
 
@@ -99,15 +110,13 @@ sudo pi-router up
 
 ---
 
-# Usage
-
-## Normal WAN routing
+# Normal WAN routing
 
 ```bash
 sudo pi-router up
 ```
 
-Starts:
+This starts:
 
 - WiFi AP
 - Ethernet client LAN if `eth0` is free
@@ -115,9 +124,9 @@ Starts:
 
 ---
 
-## Tailscale tunnel routing
+# Tailscale tunnel routing
 
-On your home node:
+On your home node first:
 
 ```bash
 sudo tailscale up \
@@ -126,19 +135,13 @@ sudo tailscale up \
   --ssh=false
 ```
 
-Approve:
+Approve the:
 - exit node
 - subnet route
 
 inside the Tailscale admin console.
 
-On the travel Pi, set:
-
-```ini
-HOME_EXIT_NODE=your-home-node-name
-```
-
-Then:
+Then on the travel Pi:
 
 ```bash
 sudo pi-router tailscale-exit
