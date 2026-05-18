@@ -110,6 +110,15 @@ sudo pi-router up
 
 ---
 
+# Boot behaviour
+
+`pi-router install` creates and enables a systemd service:
+
+```bash
+/etc/systemd/system/pi-router.service
+
+---
+
 # Normal WAN routing
 
 ```bash
