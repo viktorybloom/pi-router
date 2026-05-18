@@ -1,384 +1,295 @@
-package commands
+package config
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/viktorybloom/pi-router/internal/config"
-	"github.com/viktorybloom/pi-router/internal/distro"
-	"github.com/viktorybloom/pi-router/internal/firewall"
-	"github.com/viktorybloom/pi-router/internal/network"
-	"github.com/viktorybloom/pi-router/internal/packages"
-	"github.com/viktorybloom/pi-router/internal/services"
-	"github.com/viktorybloom/pi-router/internal/system"
-	"github.com/viktorybloom/pi-router/internal/tailscale"
+	"strings"
 )
 
-type App struct{ ConfigPath string }
+const DefaultConfigPath = "/usr/local/etc/pi-router.env"
 
-func (a App) InitConfig() error {
-	return config.Save(a.ConfigPath, config.Default())
+type Config struct {
+	APSSID             string
+	APPass             string
+	APChannel          string
+	APIP               string
+	APDHCPStart        string
+	APDHCPEnd          string
+	EthClientIP        string
+	EthClientDHCPStart string
+	EthClientDHCPEnd   string
+
+	WifiCountry      string
+	InstallTailscale bool
+
+	UplinkIF     string
+	HomeExitNode string
+
+	AllowClientSSH bool
+	FailClosed     bool
+
+	BootMode string
 }
 
-func (a App) Uninstall() error {
-	_ = system.Run("systemctl", "stop", "pi-router.service")
-	_ = system.Run("systemctl", "disable", "pi-router.service")
+func Default() Config {
+	return Config{
+		APSSID:             "pi_travel_router",
+		APPass:             "CHANGE_ME_LONG_RANDOM_PASSWORD",
+		APChannel:          "6",
+		APIP:               "192.168.50.1",
+		APDHCPStart:        "192.168.50.10",
+		APDHCPEnd:          "192.168.50.100",
+		EthClientIP:        "192.168.60.1",
+		EthClientDHCPStart: "192.168.60.10",
+		EthClientDHCPEnd:   "192.168.60.100",
 
-	_ = system.Run("systemctl", "stop", "hostapd")
-	_ = system.Run("systemctl", "stop", "dnsmasq")
+		WifiCountry:      "AU",
+		InstallTailscale: true,
 
-	files := []string{
-		"/etc/systemd/system/pi-router.service",
-		"/etc/dnsmasq.d/pi-router.conf",
-		"/etc/hostapd/hostapd.conf",
-		"/etc/sysctl.d/90-pi-router.conf",
+		UplinkIF:     "",
+		HomeExitNode: "",
+
+		AllowClientSSH: false,
+		FailClosed:     true,
+
+		BootMode: "up",
 	}
-
-	for _, f := range files {
-		_ = os.Remove(f)
-	}
-
-	_ = system.Run("systemctl", "daemon-reload")
-
-	fmt.Println("Uninstalled pi-router generated files.")
-	fmt.Println("Config preserved at:", a.ConfigPath)
-	fmt.Println("To remove config too: sudo pi-router purge")
-
-	return nil
 }
 
-func (a App) Purge() error {
-	if err := a.Uninstall(); err != nil {
-		return err
+func Load(path string) (Config, error) {
+	cfg := Default()
+
+	if path == "" {
+		path = DefaultConfigPath
 	}
 
-	if err := os.Remove(a.ConfigPath); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-
-	fmt.Println("Purged pi-router config.")
-	fmt.Println("To remove binary manually:")
-	fmt.Println("  sudo rm -f /usr/local/bin/pi-router")
-
-	return nil
-}
-
-func (a App) cfg() (config.Config, error) {
-	return config.Load(a.ConfigPath)
-}
-
-func Doctor() error {
-	info := distro.Detect()
-
-	fmt.Printf("OS: %s (%s)\n", info.Name, info.ID)
-	fmt.Printf("Package manager: %s\n", info.PkgMgr)
-	fmt.Printf("Service manager: %s\n", info.ServiceMgr)
-
-	for _, bin := range []string{
-		"hostapd",
-		"dnsmasq",
-		"nft",
-		"tailscale",
-		"dhcpcd",
-		"iw",
-		"ip",
-	} {
-		fmt.Printf("%-10s %v\n", bin, system.CommandExists(bin))
-	}
-
-	return nil
-}
-
-func (a App) Bootstrap() error {
-	cfg, err := a.cfg()
+	file, err := os.Open(path)
 	if err != nil {
-		return err
+		if os.IsNotExist(err) {
+			applyOSEnv(&cfg)
+			return cfg, nil
+		}
+
+		return cfg, err
 	}
 
-	info := distro.Detect()
+	defer file.Close()
 
-	return packages.Bootstrap(info.PkgMgr, cfg.InstallTailscale)
+	values := map[string]string{}
+
+	s := bufio.NewScanner(file)
+
+	for s.Scan() {
+		line := strings.TrimSpace(s.Text())
+
+		if line == "" ||
+			strings.HasPrefix(line, "#") ||
+			!strings.Contains(line, "=") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+
+		key := strings.TrimSpace(parts[0])
+		val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+
+		values[key] = val
+	}
+
+	if err := s.Err(); err != nil {
+		return cfg, err
+	}
+
+	applyMap(&cfg, values)
+	applyOSEnv(&cfg)
+
+	return cfg, nil
 }
 
-func (a App) Install() error {
-	cfg, err := a.cfg()
-	if err != nil {
-		return err
+func Save(path string, cfg Config) error {
+	if path == "" {
+		path = DefaultConfigPath
 	}
 
-	if err := os.MkdirAll(filepath.Dir(config.DefaultConfigPath), 0755); err != nil {
-		return err
-	}
+	content := fmt.Sprintf(`# =========================
+# WiFi AP for clients
+# =========================
+AP_SSID=%s
+AP_PASS=%s
+AP_CHANNEL=%s
 
-	if err := config.Save(config.DefaultConfigPath, cfg); err != nil {
-		return err
-	}
+AP_IP=%s
+AP_DHCP_START=%s
+AP_DHCP_END=%s
 
-	_ = system.Run("systemctl", "stop", "hostapd")
-	_ = system.Run("systemctl", "stop", "dnsmasq")
+# =========================
+# Ethernet client LAN
+# =========================
+ETH_CLIENT_IP=%s
+ETH_CLIENT_DHCP_START=%s
+ETH_CLIENT_DHCP_END=%s
 
-	sysctl := `net.ipv4.ip_forward=1
-net.ipv4.conf.all.rp_filter=1
-net.ipv4.conf.default.rp_filter=1
-net.ipv4.icmp_echo_ignore_broadcasts=1
-net.ipv4.conf.all.accept_redirects=0
-net.ipv4.conf.all.send_redirects=0
-`
+# =========================
+# System
+# =========================
+WIFI_COUNTRY=%s
+INSTALL_TAILSCALE=%t
 
-	if err := os.WriteFile("/etc/sysctl.d/90-pi-router.conf", []byte(sysctl), 0644); err != nil {
-		return err
-	}
+# Leave blank for auto-detect
+UPLINK_IF=%s
 
-	_ = system.Run("sysctl", "--system")
+# =========================
+# Tailscale
+# =========================
+HOME_EXIT_NODE=%s
 
-	hostapd := fmt.Sprintf(`interface=wlan0
-driver=nl80211
-ssid=%s
-hw_mode=g
-channel=%s
-wmm_enabled=1
-auth_algs=1
-ignore_broadcast_ssid=0
-wpa=2
-wpa_passphrase=%s
-wpa_key_mgmt=WPA-PSK
-rsn_pairwise=CCMP
-country_code=%s
+# =========================
+# Security
+# =========================
+ALLOW_CLIENT_SSH=%t
+FAIL_CLOSED=%t
+
+# =========================
+# Boot mode
+# up     = WAN routing
+# tunnel = tailscale tunnel routing
+# =========================
+BOOT_MODE=%s
 `,
 		cfg.APSSID,
-		cfg.APChannel,
 		cfg.APPass,
-		cfg.WifiCountry,
-	)
+		cfg.APChannel,
 
-	if err := os.MkdirAll("/etc/hostapd", 0755); err != nil {
-		return err
-	}
-
-	if err := os.WriteFile("/etc/hostapd/hostapd.conf", []byte(hostapd), 0600); err != nil {
-		return err
-	}
-
-	_ = os.WriteFile(
-		"/etc/default/hostapd",
-		[]byte("DAEMON_CONF=\"/etc/hostapd/hostapd.conf\"\n"),
-		0644,
-	)
-
-	_ = os.WriteFile(
-		"/etc/dnsmasq.conf",
-		[]byte("conf-dir=/etc/dnsmasq.d,.bak\n"),
-		0644,
-	)
-
-	_ = os.MkdirAll("/etc/dnsmasq.d", 0755)
-
-	dns := fmt.Sprintf(`interface=wlan0
-dhcp-range=%s,%s,255.255.255.0,24h
-
-interface=eth0
-dhcp-range=%s,%s,255.255.255.0,24h
-
-domain-needed
-bogus-priv
-`,
+		cfg.APIP,
 		cfg.APDHCPStart,
 		cfg.APDHCPEnd,
+
+		cfg.EthClientIP,
 		cfg.EthClientDHCPStart,
 		cfg.EthClientDHCPEnd,
+
+		cfg.WifiCountry,
+		cfg.InstallTailscale,
+
+		cfg.UplinkIF,
+
+		cfg.HomeExitNode,
+
+		cfg.AllowClientSSH,
+		cfg.FailClosed,
+
+		cfg.BootMode,
 	)
 
-	if err := os.WriteFile("/etc/dnsmasq.d/pi-router.conf", []byte(dns), 0644); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
 
-	bootMode := cfg.BootMode
-
-	if bootMode == "" {
-		bootMode = "up"
-	}
-
-	if bootMode != "up" && bootMode != "tunnel" {
-		return fmt.Errorf("invalid BOOT_MODE %q: use up or tunnel", bootMode)
-	}
-
-	unit := fmt.Sprintf(`[Unit]
-Description=Pi Travel Router
-After=network-online.target tailscaled.service
-Wants=network-online.target tailscaled.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/local/bin/pi-router %s
-
-[Install]
-WantedBy=multi-user.target
-`, bootMode)
-
-	if err := os.WriteFile(
-		"/etc/systemd/system/pi-router.service",
-		[]byte(unit),
-		0644,
-	); err != nil {
-		return err
-	}
-
-	info := distro.Detect()
-
-	sm := services.Manager{Kind: info.ServiceMgr}
-
-	_ = sm.Enable("nftables")
-	_ = sm.Enable("fail2ban")
-
-	_ = system.Run("systemctl", "daemon-reload")
-	_ = system.Run("systemctl", "enable", "tailscaled")
-	_ = system.Run("systemctl", "enable", "pi-router.service")
-
-	fmt.Println("Installed configs and enabled boot service.")
-	fmt.Println("Reboot recommended.")
-
-	return nil
+	return os.WriteFile(path, []byte(content), 0600)
 }
 
-func (a App) WifiAP() error {
-	cfg, err := a.cfg()
-	if err != nil {
-		return err
+func applyMap(cfg *Config, values map[string]string) {
+	get := func(k, fallback string) string {
+		if v, ok := values[k]; ok {
+			return v
+		}
+
+		return fallback
 	}
 
-	info := distro.Detect()
-	sm := services.Manager{Kind: info.ServiceMgr}
+	boolv := func(k string, fallback bool) bool {
+		v, ok := values[k]
 
-	_ = sm.Stop("hostapd")
-	_ = sm.Stop("dnsmasq")
+		if !ok {
+			return fallback
+		}
 
-	if err := network.AppendManagedBlock(
-		"/etc/dhcpcd.conf",
-		"pi-router wlan0",
-		fmt.Sprintf(
-			"interface wlan0\nstatic ip_address=%s/24\nnohook wpa_supplicant",
-			cfg.APIP,
-		),
-	); err != nil {
-		return err
+		return parseBool(v, fallback)
 	}
 
-	network.ResetIface("wlan0")
+	cfg.APSSID = get("AP_SSID", cfg.APSSID)
+	cfg.APPass = get("AP_PASS", cfg.APPass)
+	cfg.APChannel = get("AP_CHANNEL", cfg.APChannel)
 
-	_ = sm.Restart("dhcpcd")
-	_ = sm.Start("dnsmasq")
-	_ = sm.Start("hostapd")
+	cfg.APIP = get("AP_IP", cfg.APIP)
+	cfg.APDHCPStart = get("AP_DHCP_START", cfg.APDHCPStart)
+	cfg.APDHCPEnd = get("AP_DHCP_END", cfg.APDHCPEnd)
 
-	fmt.Println("WiFi AP active:", cfg.APSSID)
+	cfg.EthClientIP = get("ETH_CLIENT_IP", cfg.EthClientIP)
+	cfg.EthClientDHCPStart = get("ETH_CLIENT_DHCP_START", cfg.EthClientDHCPStart)
+	cfg.EthClientDHCPEnd = get("ETH_CLIENT_DHCP_END", cfg.EthClientDHCPEnd)
 
-	return nil
+	cfg.WifiCountry = get("WIFI_COUNTRY", cfg.WifiCountry)
+
+	cfg.InstallTailscale = boolv(
+		"INSTALL_TAILSCALE",
+		cfg.InstallTailscale,
+	)
+
+	cfg.UplinkIF = get("UPLINK_IF", cfg.UplinkIF)
+	cfg.HomeExitNode = get("HOME_EXIT_NODE", cfg.HomeExitNode)
+
+	cfg.AllowClientSSH = boolv(
+		"ALLOW_CLIENT_SSH",
+		cfg.AllowClientSSH,
+	)
+
+	cfg.FailClosed = boolv(
+		"FAIL_CLOSED",
+		cfg.FailClosed,
+	)
+
+	cfg.BootMode = get("BOOT_MODE", cfg.BootMode)
 }
 
-func (a App) EthLAN() error {
-	cfg, err := a.cfg()
-	if err != nil {
-		return err
+func applyOSEnv(cfg *Config) {
+	values := map[string]string{}
+
+	keys := []string{
+		"AP_SSID",
+		"AP_PASS",
+		"AP_CHANNEL",
+
+		"AP_IP",
+		"AP_DHCP_START",
+		"AP_DHCP_END",
+
+		"ETH_CLIENT_IP",
+		"ETH_CLIENT_DHCP_START",
+		"ETH_CLIENT_DHCP_END",
+
+		"WIFI_COUNTRY",
+		"INSTALL_TAILSCALE",
+
+		"UPLINK_IF",
+		"HOME_EXIT_NODE",
+
+		"ALLOW_CLIENT_SSH",
+		"FAIL_CLOSED",
+
+		"BOOT_MODE",
 	}
 
-	if network.Uplink(cfg) == "eth0" {
-		return fmt.Errorf("eth0 is uplink; cannot also be LAN")
+	for _, k := range keys {
+		if v := os.Getenv(k); v != "" {
+			values[k] = v
+		}
 	}
 
-	info := distro.Detect()
-	sm := services.Manager{Kind: info.ServiceMgr}
-
-	if err := network.AppendManagedBlock(
-		"/etc/dhcpcd.conf",
-		"pi-router eth0",
-		fmt.Sprintf(
-			"interface eth0\nstatic ip_address=%s/24",
-			cfg.EthClientIP,
-		),
-	); err != nil {
-		return err
-	}
-
-	network.ResetIface("eth0")
-
-	_ = sm.Restart("dhcpcd")
-	_ = sm.Restart("dnsmasq")
-
-	fmt.Println("Ethernet LAN active on eth0")
-
-	return nil
+	applyMap(cfg, values)
 }
 
-func (a App) RouteWAN() error {
-	cfg, err := a.cfg()
-	if err != nil {
-		return err
+func parseBool(v string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "true", "1", "yes", "y", "on":
+		return true
+
+	case "false", "0", "no", "n", "off":
+		return false
+
+	default:
+		return fallback
 	}
-
-	cfg.FailClosed = false
-
-	return firewall.Apply(cfg, firewall.ModeWAN)
-}
-
-func (a App) RouteTunnel() error {
-	cfg, err := a.cfg()
-	if err != nil {
-		return err
-	}
-
-	cfg.FailClosed = true
-
-	return firewall.Apply(cfg, firewall.ModeTunnel)
-}
-
-func (a App) TailscaleUp() error {
-	return tailscale.Up()
-}
-
-func (a App) TailscaleExit() error {
-	cfg, err := a.cfg()
-	if err != nil {
-		return err
-	}
-
-	return tailscale.UseExit(cfg)
-}
-
-func (a App) Up() error {
-	if err := a.WifiAP(); err != nil {
-		return err
-	}
-
-	cfg, _ := a.cfg()
-
-	if network.Uplink(cfg) != "eth0" {
-		_ = a.EthLAN()
-	}
-
-	return a.RouteWAN()
-}
-
-func (a App) Tunnel() error {
-	if err := a.TailscaleExit(); err != nil {
-		return err
-	}
-
-	return a.RouteTunnel()
-}
-
-func Status() error {
-	fmt.Println("===== interfaces =====")
-	_ = system.Run("ip", "-br", "addr")
-
-	fmt.Println("\n===== routes =====")
-	_ = system.Run("ip", "route")
-
-	fmt.Println("\n===== nftables =====")
-	_ = system.Run("nft", "list", "ruleset")
-
-	fmt.Println("\n===== tailscale =====")
-	_ = system.Run("tailscale", "status")
-
-	return nil
 }
